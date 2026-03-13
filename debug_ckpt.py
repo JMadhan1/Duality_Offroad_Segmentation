@@ -23,7 +23,8 @@ try:
     print("Success! State dict loaded into ResNet101 DeepLabV3+.")
 except Exception as e:
     err_str = str(e)
-    print("Error loading state dict:", err_str[:300], "...")
+    # Using a safer way to print the error that avoids indexing if the linter is confused
+    print(f"Error loading state dict: {err_str}")
 
 # Check if maybe it's ResNet34
 model34 = build_deeplabv3plus(backbone='resnet34', num_classes=10)

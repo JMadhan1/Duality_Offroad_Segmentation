@@ -31,6 +31,7 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from tqdm import tqdm
 import yaml
+import typing
 
 # Local src imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -141,9 +142,10 @@ def compute_sample_weights(masks_dir: str, image_files: list) -> list:
         mask = remap_mask(mask_raw)
 
         img_weight = 1.0
+        r_counts: dict[int, int] = rare_counts
         for cls_idx, cls_weight in RARE_CLASS_WEIGHTS.items():
             if np.sum(mask == cls_idx) > RARE_PIXEL_THRESHOLD:
-                rare_counts[cls_idx] += 1
+                r_counts[cls_idx] += 1
                 img_weight = max(img_weight, cls_weight)
         weights.append(img_weight)
 
@@ -218,9 +220,9 @@ class CombinedLoss(nn.Module):
         target_clamped[~valid] = 0
 
         target_oh = F.one_hot(target_clamped, num_classes=C)
-        target_oh = target_oh.permute(0, 3, 1, 2).float()
+        target_oh = torch.permute(target_oh, (0, 3, 1, 2)).to(torch.float32)
 
-        mask      = valid.unsqueeze(1).to(torch.float32)
+        mask      = torch.unsqueeze(valid, 1).to(torch.float32)
         prob      = prob * mask
         target_oh = target_oh * mask
 
@@ -371,7 +373,8 @@ def main():
     val_images   = base_cfg['data']['val_images']
     val_masks    = base_cfg['data']['val_masks']
 
-    save_dir = Path(P3_CFG['save_dir'])
+    save_dir_str = typing.cast(str, P3_CFG['save_dir'])
+    save_dir = Path(save_dir_str)
     save_dir.mkdir(parents=True, exist_ok=True)
 
     # ── Device ───────────────────────────────────────────────────────────────
@@ -385,9 +388,10 @@ def main():
         print("[WARNING] Running on CPU — training will be slow!")
 
     # ── Resolve input size (OOM safety) ────────────────────────────────────
-    h, w       = P3_CFG['input_size']           # default 512x512
-    batch_size = P3_CFG['batch_size']           # default 4
-    accum      = P3_CFG['gradient_accumulation_steps']  # default 2
+    dim = typing.cast(typing.Tuple[int, int], P3_CFG['input_size'])
+    h, w       = dim
+    batch_size = int(typing.cast(int, P3_CFG['batch_size']))
+    accum      = int(typing.cast(int, P3_CFG['gradient_accumulation_steps']))
 
     print(f"[Config]  input={h}x{w}  batch={batch_size}  "
           f"accum={accum}  effective_batch={batch_size * accum}")
@@ -426,8 +430,8 @@ def main():
         replacement=True,
     )
 
-    nw = P3_CFG['num_workers']
-    pm = P3_CFG['pin_memory'] and device.type == 'cuda'
+    nw = int(typing.cast(int, P3_CFG['num_workers']))
+    pm = bool(typing.cast(bool, P3_CFG['pin_memory'])) and device.type == 'cuda'
     train_loader = DataLoader(
         train_ds, batch_size=batch_size,
         sampler=sampler,
@@ -443,23 +447,23 @@ def main():
 
     # ── Model ────────────────────────────────────────────────────────────────
     model = build_deeplabv3plus(
-        backbone=P3_CFG['backbone'],
+        backbone=str(typing.cast(str, P3_CFG['backbone'])),
         encoder_weights=None,
-        num_classes=P3_CFG['num_classes'],
+        num_classes=int(typing.cast(int, P3_CFG['num_classes'])),
     ).to(device)
 
     # ── Loss / Optimizer / Scheduler ─────────────────────────────────────────
     criterion = CombinedLoss(class_weights, device)
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=P3_CFG['learning_rate'],
-        weight_decay=P3_CFG['weight_decay'],
+        lr=float(typing.cast(float, P3_CFG['learning_rate'])),
+        weight_decay=float(typing.cast(float, P3_CFG['weight_decay'])),
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
         optimizer,
-        T_0=P3_CFG['T_0'],
-        T_mult=P3_CFG['T_mult'],
-        eta_min=P3_CFG['eta_min'],
+        T_0=int(typing.cast(int, P3_CFG['T_0'])),
+        T_mult=int(typing.cast(int, P3_CFG['T_mult'])),
+        eta_min=float(typing.cast(float, P3_CFG['eta_min'])),
     )
     scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
 
@@ -470,12 +474,12 @@ def main():
     latest_ckpt = str(save_dir / 'latest_checkpoint.pth')
 
     best_miou  = 0.0
-    best_iou   = [0.0] * P3_CFG['num_classes']
+    best_iou: list[float] = [0.0] * num_classes
     no_improve = 0
     start_epoch = 0
     patience    = int(P3_CFG['early_stopping_patience'])
-    epochs      = int(P3_CFG['epochs'])
-    num_classes = int(P3_CFG['num_classes'])
+    epochs      = int(typing.cast(int, P3_CFG['epochs']))
+    num_classes = int(typing.cast(int, P3_CFG['num_classes']))
 
     # ── Resume or load Phase 2 checkpoint ────────────────────────────────────
     if Path(latest_ckpt).exists():
@@ -493,7 +497,7 @@ def main():
         print(f"[Resume] Continuing from epoch {start_epoch}  "
               f"(best mIoU={best_miou*100:.2f}%, no_improve={no_improve})")
     else:
-        p2_path = P3_CFG['checkpoint']
+        p2_path = str(typing.cast(str, P3_CFG['checkpoint']))
         if not Path(p2_path).exists():
             raise FileNotFoundError(
                 f"Phase 2 checkpoint not found: {p2_path}\n"
@@ -508,7 +512,7 @@ def main():
 
     print(f"\n{'='*65}")
     print(f"  Phase 3 fine-tuning: {epochs} epochs, input {h}x{w}")
-    print(f"  lr={P3_CFG['learning_rate']}  scheduler=CosineWarmRestarts(T_0={P3_CFG['T_0']},T_mult={P3_CFG['T_mult']})")
+    print(f"  lr={float(typing.cast(float, P3_CFG['learning_rate']))}  scheduler=CosineWarmRestarts(T_0={int(typing.cast(int, P3_CFG['T_0']))},T_mult={int(typing.cast(int, P3_CFG['T_mult']))})")
     print(f"  effective_batch={batch_size * accum}  (batch={batch_size} x accum={accum})")
     print(f"  To resume after stopping: just run the same command again.")
     print(f"{'='*65}\n")
@@ -558,16 +562,16 @@ def main():
                 print(f"    [{i}] {name:<20} {iou*100:.2f}%  ({sign}{delta_p2:.2f}% vs P2)")
 
         # -- CSV logging --
-        log_row = {
+        log_row: dict[str, typing.Any] = {
             'epoch':      epoch,
-            'train_loss': round(float(train_loss), 5),
-            'val_loss':   round(float(val_loss), 5),
-            'val_miou':   round(float(val_miou), 5),
-            'lr':         round(float(current_lr), 8),
-            'time_s':     round(float(elapsed), 1),
+            'train_loss': float(f"{train_loss:.5f}"),
+            'val_loss':   float(f"{val_loss:.5f}"),
+            'val_miou':   float(f"{val_miou:.5f}"),
+            'lr':         float(f"{current_lr:.8f}"),
+            'time_s':     float(f"{elapsed:.1f}"),
         }
         for i, iou in enumerate(iou_classes):
-            log_row[f'iou_cls{i}'] = round(iou, 5)
+            log_row[f'iou_cls{i}'] = float(f"{iou:.5f}")
         csv_logger.log(log_row)
 
         # -- Checkpoint: save best --
