@@ -22,7 +22,8 @@ try:
     model.load_state_dict(state_dict)
     print("Success! State dict loaded into ResNet101 DeepLabV3+.")
 except Exception as e:
-    print("Error loading state dict:", str(e)[:300], "...")
+    err_str = str(e)
+    print("Error loading state dict:", err_str[:300], "...")
 
 # Check if maybe it's ResNet34
 model34 = build_deeplabv3plus(backbone='resnet34', num_classes=10)

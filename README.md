@@ -115,5 +115,5 @@ We adopted a progressive training pipeline that scaled from a local development 
 3. **Cloud Training:** Upload `colab/hackathon_training.ipynb` to Google Colab.
 
 ---
-**Team:** [YOUR TEAM NAME]
+**Team:** AI LONE STARS
 *Developed for the Duality AI 2026 Hackathon Challenges*

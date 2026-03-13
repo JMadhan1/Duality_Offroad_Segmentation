@@ -142,7 +142,7 @@ def compute_sample_weights(masks_dir: str, image_files: list) -> list:
 
         img_weight = 1.0
         for cls_idx, cls_weight in RARE_CLASS_WEIGHTS.items():
-            if (mask == cls_idx).sum() > RARE_PIXEL_THRESHOLD:
+            if np.sum(mask == cls_idx) > RARE_PIXEL_THRESHOLD:
                 rare_counts[cls_idx] += 1
                 img_weight = max(img_weight, cls_weight)
         weights.append(img_weight)
@@ -171,7 +171,7 @@ def compute_class_weights_capped(masks_dir: str, num_classes: int = 10) -> torch
             mask_raw = mask_raw[:, :, 0]
         remapped = remap_mask(mask_raw)
         for c in range(num_classes):
-            pixel_counts[c] += (remapped == c).sum()
+            pixel_counts[c] += np.sum(remapped == c).astype(np.float64)
 
     total = pixel_counts.sum()
     weights = np.where(
@@ -220,7 +220,7 @@ class CombinedLoss(nn.Module):
         target_oh = F.one_hot(target_clamped, num_classes=C)
         target_oh = target_oh.permute(0, 3, 1, 2).float()
 
-        mask      = valid.unsqueeze(1).float()
+        mask      = valid.unsqueeze(1).to(torch.float32)
         prob      = prob * mask
         target_oh = target_oh * mask
 
@@ -230,7 +230,7 @@ class CombinedLoss(nn.Module):
         sum_gt       = target_oh.sum(dim=(0, 2, 3))
 
         dice_per_class = 1.0 - (2.0 * intersection + smooth) / (sum_pred + sum_gt + smooth)
-        return dice_per_class.mean()
+        return torch.mean(dice_per_class)
 
 
 # --------------------------------------------------------------------------- #
@@ -560,11 +560,11 @@ def main():
         # -- CSV logging --
         log_row = {
             'epoch':      epoch,
-            'train_loss': round(train_loss, 5),
-            'val_loss':   round(val_loss, 5),
-            'val_miou':   round(val_miou, 5),
-            'lr':         round(current_lr, 8),
-            'time_s':     round(elapsed, 1),
+            'train_loss': round(float(train_loss), 5),
+            'val_loss':   round(float(val_loss), 5),
+            'val_miou':   round(float(val_miou), 5),
+            'lr':         round(float(current_lr), 8),
+            'time_s':     round(float(elapsed), 1),
         }
         for i, iou in enumerate(iou_classes):
             log_row[f'iou_cls{i}'] = round(iou, 5)
