@@ -1,0 +1,30 @@
+OFFROAD SEGMENTATION FINAL REPORT
+=================================
+
+Base Model: DeepLabV3+ ResNet34 (512x512)
+Best Local Checkpoint: runs/phase3/best_model.pth
+
+MIOU SUMMARY:
+---------------------------------
+Phase 1: 52.75%
+Phase 2: 56.62%
+Phase 3: 58.20%
+TTA Boost: 59.11%
+Final Gain: +6.36%
+
+PER-CLASS IOU PROGRESSION:
+Class                      P1       P2       P3      TTA     Gain
+-----------------------------------------------------------------
+Trees                  77.13%   80.11%   82.35%   82.55%   +5.42%
+Lush Bushes            64.66%   66.34%   67.66%   67.86%   +3.20%
+Dry Grass              63.79%   65.89%   66.97%   67.47%   +3.68%
+Dry Bushes             35.40%   42.57%   42.93%   43.83%   +8.43%
+Ground Clutter         31.56%   33.23%   35.43%   36.11%   +4.55%
+Flowers                53.75%   58.41%   60.56%   61.01%   +7.26%
+Logs                   21.90%   27.00%   29.34%   32.93%  +11.03%
+Rocks                  29.85%   37.33%   39.37%   41.33%  +11.48%
+Landscape              52.36%   57.77%   59.58%   60.05%   +7.69%
+Sky                    97.07%   97.57%   97.86%   97.96%   +0.89%
+
+INFERENCE PERFORMANCE:
+Average time per image (4-aug TTA): 93.3 ms

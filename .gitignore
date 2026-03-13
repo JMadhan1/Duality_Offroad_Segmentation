@@ -1,0 +1,9 @@
+*.pth
+__pycache__/
+.venv*/
+data/
+.gemini/
+brai*/
+.agents/
+Offroad_Segmentation_Training_Dataset/
+Offroad_Segmentation_testImages/

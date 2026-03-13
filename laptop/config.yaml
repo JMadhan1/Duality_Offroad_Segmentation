@@ -1,0 +1,77 @@
+# ============================================================
+# Duality AI Offroad Segmentation — Master Configuration
+# ============================================================
+
+# ------- Data Paths (relative to project/ directory) --------
+data:
+  train_images: ../Offroad_Segmentation_Training_Dataset/Offroad_Segmentation_Training_Dataset/train/Color_Images
+  train_masks:  ../Offroad_Segmentation_Training_Dataset/Offroad_Segmentation_Training_Dataset/train/Segmentation
+  val_images:   ../Offroad_Segmentation_Training_Dataset/Offroad_Segmentation_Training_Dataset/val/Color_Images
+  val_masks:    ../Offroad_Segmentation_Training_Dataset/Offroad_Segmentation_Training_Dataset/val/Segmentation
+  test_images:  ../Offroad_Segmentation_testImages/Offroad_Segmentation_testImages/Color_Images
+  test_masks:   ../Offroad_Segmentation_testImages/Offroad_Segmentation_testImages/Segmentation  # for evaluation only
+
+# ------- Classes -------------------------------------------------
+classes:
+  num_classes: 10
+  ignore_index: 255
+  names: [Trees, Lush_Bushes, Dry_Grass, Dry_Bushes, Ground_Clutter, Flowers, Logs, Rocks, Landscape, Sky]
+
+# ------- Model ---------------------------------------------------
+model:
+  architecture: deeplabv3plus   # options: deeplabv3plus | segformer
+  backbone: resnet34            # resnet34 is ~5x faster than resnet101 with only ~2-3% IoU drop
+  encoder_weights: imagenet
+  # SegFormer variant (used when architecture: segformer)
+  segformer_variant: nvidia/mit-b3
+
+# ------- Training ------------------------------------------------
+training:
+  input_size: [384, 384]        # [H, W] — 384 cuts compute by ~44% vs 512
+  batch_size: 8                 # resnet34 + 384 fits comfortably in 6GB VRAM
+  grad_accum_steps: 1           # effective batch = batch_size * grad_accum_steps
+  epochs: 100
+  optimizer: adamw              # adamw | sgd
+  learning_rate: 1.0e-3         # 1e-3 — high enough to escape dominant-class collapse
+  weight_decay: 0.01
+  scheduler: reduce_on_plateau  # reactive: halves LR when val mIoU plateaus
+  reduce_factor: 0.5            # multiply LR by this on plateau
+  reduce_patience: 5            # epochs with no val mIoU improvement before reducing
+  reduce_min_lr: 1.0e-6         # floor LR
+  warmup_epochs: 0              # NO warmup — it was conflicting with cosine and keeping LR too low
+  early_stopping_patience: 20
+  mixed_precision: true         # GPU: AMP gives ~2x speedup with fp16
+  gradient_clip: 1.0
+  ema_decay: 0.0                # disable EMA during debugging (saves memory & time)
+  num_workers: 2                # 2 workers for GPU data prefetch on Windows
+  pin_memory: true              # faster CPU->GPU transfers
+  seed: 42
+
+# ------- Loss Function -------------------------------------------
+# PHASE 1 (current): CE-only — stable, proven, no collapse risk
+# PHASE 2 (after val mIoU > 20%): switch to combined with dice+focal
+loss:
+  loss_type: ce_only            # ce_only | combined
+  ce_weight: 1.0
+  dice_weight: 0.0
+  focal_weight: 0.0
+  focal_gamma: 2.0
+  use_class_weights: true       # inverse-frequency weights
+  weight_cap: 3.0               # cap weights at 3x max — verified: Logs init at 99% due to 8x weight causing collapse
+
+# ------- Output & Logging ----------------------------------------
+output:
+  runs_dir: runs
+  checkpoint_name: best_model.pth
+  ema_checkpoint_name: best_model_ema.pth
+  log_csv: runs/training_log.csv
+  tensorboard: true
+  log_interval: 20              # print/log every N batches
+
+# ------- Inference / Test-Time Augmentation ----------------------
+inference:
+  use_tta: true
+  tta_scales: [0.75, 1.0, 1.25]
+  tta_flips: true               # horizontal flip
+  batch_size: 4
+  output_dir: runs/predictions
